@@ -147,4 +147,4 @@ def guard(req: ToolCall):
         "decision": "block",
         "reason": "Unknown tool"
     }
-    }
+
