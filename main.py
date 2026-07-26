@@ -41,7 +41,6 @@ def calculate(req: ProrationRequest):
     return {"charge": charge}
 
 
-
 WORKSPACE = "/home/agent/workspace"
 HOME = "/home/agent"
 SECRET = "/home/agent/service-account.json"
@@ -60,6 +59,7 @@ class ToolCall(BaseModel):
     method: Optional[str] = None
     url: Optional[str] = None
 
+
 def normalize_path(path: str) -> str:
     path = path.replace("$HOME", HOME)
     path = path.replace("${HOME}", HOME)
@@ -73,9 +73,7 @@ def normalize_path(path: str) -> str:
     return str(PurePosixPath(path))
 
 
-
-
-@app.post("/check")
+@app.post("/guard")
 def guard(req: ToolCall):
 
     # HTTP Request Policy
@@ -96,19 +94,18 @@ def guard(req: ToolCall):
     # Write File Policy
     if req.tool == "write_file":
         p = normalize_path(req.path)
-        root = posixpath.normpath(WRITE_ROOT)
 
-        if p == root or p.startswith(root + "/"):
+        if p == WRITE_ROOT or p.startswith(WRITE_ROOT + "/"):
             return {
                 "decision": "allow",
                 "reason": "Write allowed"
-                }
+            }
 
         return {
             "decision": "block",
             "reason": "Write outside output directory"
-            }
-     
+        }
+
     # Bash Policy
     if req.tool == "bash":
 
@@ -149,4 +146,5 @@ def guard(req: ToolCall):
     return {
         "decision": "block",
         "reason": "Unknown tool"
+    }
     }
