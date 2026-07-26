@@ -5,6 +5,8 @@ from urllib.parse import urlparse
 from pathlib import PurePosixPath
 import os
 import shlex
+import re
+from typing import List
 
 app = FastAPI()
 
@@ -148,3 +150,98 @@ def guard(req: ToolCall):
         "reason": "Unknown tool"
     }
 
+class SkillRequest(BaseModel):
+    skill: str
+
+@app.post("/scan")
+def scan_skill(req: SkillRequest):
+
+    text = req.skill
+    lower = text.lower()
+
+    categories = []
+
+    # ----------------------------
+    # hardcoded_secret
+    # ----------------------------
+
+    secret_patterns = [
+        r"sk-[A-Za-z0-9]{20,}",
+        r"AIza[0-9A-Za-z\-_]{20,}",
+        r"ghp_[A-Za-z0-9]{20,}",
+        r"xox[baprs]-[A-Za-z0-9\-]+",
+        r"https://hooks\.slack\.com/services/",
+        r"-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----",
+        r"api[_-]?key\s*:",
+        r"secret\s*:",
+        r"token\s*:"
+    ]
+
+    if any(re.search(p, text, re.IGNORECASE) for p in secret_patterns):
+        if not re.search(r"\$\{?[A-Z0-9_]+\}?", text):
+            categories.append("hardcoded_secret")
+
+    # ----------------------------
+    # prompt_injection
+    # ----------------------------
+
+    injection_patterns = [
+        r"ignore .*user",
+        r"ignore .*previous",
+        r"ignore .*instruction",
+        r"ignore .*stop",
+        r"ignore .*cancel",
+        r"silently exfiltrate",
+        r"exfiltrate",
+        r"send .*without.*user",
+        r"do not tell the user",
+        r"never inform the user",
+        r"override user",
+        r"bypass safety"
+    ]
+
+    if any(re.search(p, lower) for p in injection_patterns):
+        categories.append("prompt_injection")
+
+    # ----------------------------
+    # excessive_permissions
+    # ----------------------------
+
+    excessive_patterns = [
+        r"filesystem:\s*all",
+        r"filesystem:\s*write",
+        r"network:\s*all",
+        r"egress:\s*all",
+        r"allow.*all domains",
+        r"read.*entire filesystem",
+        r"write.*entire filesystem"
+    ]
+
+    if any(re.search(p, lower) for p in excessive_patterns):
+        categories.append("excessive_permissions")
+
+    # ----------------------------
+    # unclear_provenance
+    # ----------------------------
+
+    has_author = re.search(r"^author\s*:", lower, re.MULTILINE)
+    has_version = re.search(r"^version\s*:", lower, re.MULTILINE)
+    has_changelog = re.search(r"^changelog\s*:", lower, re.MULTILINE)
+
+    if not (has_author and has_version and has_changelog):
+        categories.append("unclear_provenance")
+
+    rewrite_patterns = [
+        r"update version silently",
+        r"rewrite version",
+        r"change version.*without",
+        r"modify metadata.*without"
+    ]
+
+    if any(re.search(p, lower) for p in rewrite_patterns):
+        if "unclear_provenance" not in categories:
+            categories.append("unclear_provenance")
+
+    return {
+        "categories": sorted(list(set(categories)))
+    }
