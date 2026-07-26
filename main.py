@@ -17,7 +17,7 @@ def home():
     return {"status": "running"}
 
 
-@app.post("/")
+@app.post("/charge")
 def calculate(req: ProrationRequest):
 
     diff = req.new_price - req.old_price
