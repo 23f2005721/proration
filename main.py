@@ -73,7 +73,7 @@ def normalize_path(path: str) -> str:
     return str(PurePosixPath(path))
 
 
-@app.post("/guard")
+@app.post("/check")
 def guard(req: ToolCall):
 
     # HTTP Request Policy
