@@ -98,18 +98,19 @@ def guard(req: ToolCall):
     # Write File Policy
     if req.tool == "write_file":
         p = normalize_path(req.path)
+        root = posixpath.normpath(WRITE_ROOT)
 
-        if p == WRITE_ROOT or p.startswith(WRITE_ROOT + "/"):
+        if p == root or p.startswith(root + "/"):
             return {
                 "decision": "allow",
                 "reason": "Write allowed"
-            }
+                }
 
         return {
             "decision": "block",
             "reason": "Write outside output directory"
-        }
-
+            }
+     
     # Bash Policy
     if req.tool == "bash":
 
