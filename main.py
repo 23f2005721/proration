@@ -6,7 +6,8 @@ from pathlib import PurePosixPath
 import os
 import shlex
 import re
-from typing import List
+from typing import Any, Dict, List
+import json
 
 app = FastAPI()
 
@@ -244,4 +245,88 @@ def scan_skill(req: SkillRequest):
 
     return {
         "categories": sorted(list(set(categories)))
+    }
+
+
+class Step(BaseModel):
+    step_number: int
+    tool: str
+    args: Dict[str, Any]
+    tokens_used: int
+
+
+class RunRequest(BaseModel):
+    budget_tokens: int
+    steps: List[Step]
+
+def normalize_string(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def canonicalize(value):
+    if isinstance(value, dict):
+        result = {}
+        for k in sorted(value.keys()):
+            if k == "client_ts":
+                continue
+            result[k] = canonicalize(value[k])
+        return result
+
+    if isinstance(value, list):
+        return [canonicalize(v) for v in value]
+
+    if isinstance(value, str):
+        return normalize_string(value)
+
+    return value
+
+
+def call_signature(step: Step):
+    return (
+        step.tool,
+        json.dumps(canonicalize(step.args), sort_keys=True, separators=(",", ":")),
+    )
+
+@app.post("/run-guard")
+def run_guard(req: RunRequest):
+
+    total = sum(s.tokens_used for s in req.steps)
+
+    if total >= req.budget_tokens:
+        return {
+            "decision": "halt",
+            "reason": f"Cumulative tokens_used ({total}) has reached the budget ({req.budget_tokens}).",
+        }
+
+    sigs = [call_signature(s) for s in req.steps]
+
+    # Three identical calls in a row
+    count = 1
+    for i in range(1, len(sigs)):
+        if sigs[i] == sigs[i - 1]:
+            count += 1
+            if count >= 3:
+                return {
+                    "decision": "halt",
+                    "reason": "Repeated identical tool call detected.",
+                }
+        else:
+            count = 1
+
+    # Trailing A,B,A,B,A,B cycle
+    if len(sigs) >= 6:
+        tail = sigs[-6:]
+        if (
+            tail[0] == tail[2] == tail[4]
+            and tail[1] == tail[3] == tail[5]
+            and tail[0] != tail[1]
+        ):
+            return {
+                "decision": "halt",
+                "reason": "Detected alternating two-step loop.",
+            }
+
+    return {
+        "decision": "continue",
+        "reason": "Budget available and no loop detected.",
     }
