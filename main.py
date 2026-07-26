@@ -60,22 +60,20 @@ class ToolCall(BaseModel):
     method: Optional[str] = None
     url: Optional[str] = None
 
-
-
-
 def normalize_path(path: str) -> str:
-    path = path.replace("${HOME}", HOME)
     path = path.replace("$HOME", HOME)
+    path = path.replace("${HOME}", HOME)
 
-    if path == "~":
-        path = HOME
-    elif path.startswith("~/"):
+    if path.startswith("~/"):
         path = HOME + path[1:]
 
     if not path.startswith("/"):
-        path = posixpath.join(WORKSPACE, path)
+        path = os.path.join(WORKSPACE, path)
 
-    return posixpath.normpath(path)
+    return str(PurePosixPath(path))
+
+
+
 
 @app.post("/check")
 def guard(req: ToolCall):
